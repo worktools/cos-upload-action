@@ -1,0 +1,95 @@
+name: Tencent COS upload
+description: Upload a local directory to Tencent Cloud COS with a verified COSCLI binary
+inputs:
+  source-dir:
+    description: Local directory to upload recursively
+    required: true
+  bucket:
+    description: COS bucket name including APPID
+    required: true
+  prefix:
+    description: Non-empty destination key prefix, without a leading slash
+    required: true
+  region:
+    description: COS bucket region
+    required: false
+    default: ap-shanghai
+  endpoint:
+    description: Optional Tencent COS endpoint; defaults to cos.<region>.myqcloud.com
+    required: false
+    default: ''
+  secret-id:
+    description: Tencent Cloud SecretId
+    required: true
+  secret-key:
+    description: Tencent Cloud SecretKey
+    required: true
+  session-token:
+    description: Optional token for temporary credentials
+    required: false
+    default: ''
+  include:
+    description: Optional COSCLI include regular expression
+    required: false
+    default: ''
+  exclude:
+    description: Optional COSCLI exclude regular expression
+    required: false
+    default: ''
+  storage-class:
+    description: Optional COS storage class
+    required: false
+    default: ''
+  metadata:
+    description: Optional COSCLI --meta value, such as Cache-Control:public,max-age=3600
+    required: false
+    default: ''
+  routines:
+    description: Concurrent file transfers, 1-32
+    required: false
+    default: '3'
+  thread-num:
+    description: Concurrent threads per multipart transfer, 1-32
+    required: false
+    default: '5'
+  part-size:
+    description: Multipart size in MiB, 1-5120
+    required: false
+    default: '32'
+  retry-count:
+    description: COSCLI per-file error retries, 0-100
+    required: false
+    default: '5'
+  forbid-overwrite:
+    description: Fail instead of overwriting an existing object
+    required: false
+    default: 'false'
+outputs:
+  destination:
+    description: Uploaded COS directory URI
+    value: ${{ steps.upload.outputs.destination }}
+runs:
+  using: composite
+  steps:
+    - id: upload
+      name: Upload to COS
+      shell: bash
+      env:
+        COS_UPLOAD_SOURCE_DIR: ${{ inputs.source-dir }}
+        COS_UPLOAD_BUCKET: ${{ inputs.bucket }}
+        COS_UPLOAD_PREFIX: ${{ inputs.prefix }}
+        COS_UPLOAD_REGION: ${{ inputs.region }}
+        COS_UPLOAD_ENDPOINT: ${{ inputs.endpoint }}
+        COS_UPLOAD_SECRET_ID: ${{ inputs.secret-id }}
+        COS_UPLOAD_SECRET_KEY: ${{ inputs.secret-key }}
+        COS_UPLOAD_SESSION_TOKEN: ${{ inputs.session-token }}
+        COS_UPLOAD_INCLUDE: ${{ inputs.include }}
+        COS_UPLOAD_EXCLUDE: ${{ inputs.exclude }}
+        COS_UPLOAD_STORAGE_CLASS: ${{ inputs.storage-class }}
+        COS_UPLOAD_METADATA: ${{ inputs.metadata }}
+        COS_UPLOAD_ROUTINES: ${{ inputs.routines }}
+        COS_UPLOAD_THREAD_NUM: ${{ inputs.thread-num }}
+        COS_UPLOAD_PART_SIZE: ${{ inputs.part-size }}
+        COS_UPLOAD_RETRY_COUNT: ${{ inputs.retry-count }}
+        COS_UPLOAD_FORBID_OVERWRITE: ${{ inputs.forbid-overwrite }}
+      run: bash "${{ github.action_path }}/scripts/upload.sh"

@@ -1,0 +1,32 @@
+name: Check action
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check shell syntax
+        run: bash -n scripts/upload.sh scripts/test.sh
+      - name: Test input validation
+        run: bash scripts/test.sh
+      - name: Check composite action failure propagation
+        id: expected-failure
+        uses: ./
+        continue-on-error: true
+        with:
+          source-dir: missing-directory
+          bucket: example-1250000000
+          prefix: worktools/example/pr/
+          secret-id: test-id
+          secret-key: test-key
+      - name: Assert expected failure
+        env:
+          ACTION_OUTCOME: ${{ steps.expected-failure.outcome }}
+        run: test "$ACTION_OUTCOME" = failure
