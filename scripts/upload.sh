@@ -109,11 +109,10 @@ main() {
   printf 'Source: %s\nDestination: %s\nRegion: %s\n' "$COS_UPLOAD_SOURCE_DIR" "$destination" "$COS_UPLOAD_REGION"
   if [[ -n "$COS_UPLOAD_PUBLIC_BASE_URL" ]]; then
     printf 'Public verification: %s\n' "$COS_UPLOAD_PUBLIC_BASE_URL"
+    node "$script_dir/verify.mjs" --validate-only "$COS_UPLOAD_SOURCE_REAL" "$COS_UPLOAD_PUBLIC_BASE_URL" \
+      || fail 'Invalid public verification configuration'
   fi
   if [[ "${1:-}" == --validate-only ]]; then
-    if [[ -n "$COS_UPLOAD_PUBLIC_BASE_URL" ]]; then
-      node "$script_dir/verify.mjs" --validate-only "$COS_UPLOAD_SOURCE_REAL" "$COS_UPLOAD_PUBLIC_BASE_URL"
-    fi
     return 0
   fi
 

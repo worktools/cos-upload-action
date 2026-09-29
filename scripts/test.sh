@@ -38,6 +38,7 @@ expect_failure 'routines must be an integer' COS_UPLOAD_ROUTINES=zero
 expect_failure 'endpoint must be a Tencent COS hostname' COS_UPLOAD_ENDPOINT=https://example.com
 expect_failure 'public-base-url must be an absolute HTTPS URL' COS_UPLOAD_PUBLIC_BASE_URL=http://cdn.example.com/example
 expect_failure 'public-base-url must not contain a query string' COS_UPLOAD_PUBLIC_BASE_URL='https://cdn.example.com/example?stale=1'
+expect_failure 'without credentials' COS_UPLOAD_PUBLIC_BASE_URL=https://user@example.com/path
 expect_failure 'verify-attempts must be an integer' COS_UPLOAD_VERIFY_ATTEMPTS=zero
 expect_failure 'verify-timeout-seconds must be an integer from 1 to 300' COS_UPLOAD_VERIFY_TIMEOUT_SECONDS=0
 expect_failure 'public verification cannot be combined with include or exclude filters' COS_UPLOAD_PUBLIC_BASE_URL=https://cdn.example.com/example COS_UPLOAD_INCLUDE='.*\.js'
