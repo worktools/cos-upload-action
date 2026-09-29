@@ -17,6 +17,9 @@ export COS_UPLOAD_SECRET_KEY=example-key
 output="$(bash "$action_root/scripts/upload.sh" --validate-only)"
 [[ "$output" == *'cos://example-1250000000/worktools/example/pr/'* ]] || { echo 'Expected normalized COS destination'; exit 1; }
 
+verified_output="$(env COS_UPLOAD_PUBLIC_BASE_URL=https://cdn.example.com/worktools/example/pr bash "$action_root/scripts/upload.sh" --validate-only)"
+[[ "$verified_output" == *'Public verification: https://cdn.example.com/worktools/example/pr/'* ]] || { echo 'Expected normalized public verification URL'; exit 1; }
+
 expect_failure() {
   local expected="$1" output
   shift
@@ -33,5 +36,10 @@ expect_failure 'prefix must be relative' COS_UPLOAD_PREFIX=../outside
 expect_failure 'Missing required input: secret-key' COS_UPLOAD_SECRET_KEY=
 expect_failure 'routines must be an integer' COS_UPLOAD_ROUTINES=zero
 expect_failure 'endpoint must be a Tencent COS hostname' COS_UPLOAD_ENDPOINT=https://example.com
+expect_failure 'public-base-url must be an absolute HTTPS URL' COS_UPLOAD_PUBLIC_BASE_URL=http://cdn.example.com/example
+expect_failure 'public-base-url must not contain a query string' COS_UPLOAD_PUBLIC_BASE_URL='https://cdn.example.com/example?stale=1'
+expect_failure 'verify-attempts must be an integer' COS_UPLOAD_VERIFY_ATTEMPTS=zero
+expect_failure 'verify-timeout-seconds must be an integer from 1 to 300' COS_UPLOAD_VERIFY_TIMEOUT_SECONDS=0
+expect_failure 'public verification cannot be combined with include or exclude filters' COS_UPLOAD_PUBLIC_BASE_URL=https://cdn.example.com/example COS_UPLOAD_INCLUDE='.*\.js'
 
 printf 'COS upload input validation tests passed\n'

@@ -1,5 +1,5 @@
 name: Tencent COS upload
-description: Upload a local directory to Tencent Cloud COS with a verified COSCLI binary
+description: Upload a local directory to Tencent Cloud COS and optionally verify every file through a public CDN URL
 inputs:
   source-dir:
     description: Local directory to upload recursively
@@ -10,6 +10,10 @@ inputs:
   prefix:
     description: Non-empty destination key prefix, without a leading slash
     required: true
+  public-base-url:
+    description: Optional HTTPS URL mapped to prefix; when set, every uploaded file is fetched and checksum-verified
+    required: false
+    default: ''
   region:
     description: COS bucket region
     required: false
@@ -60,6 +64,18 @@ inputs:
     description: COSCLI per-file error retries, 0-100
     required: false
     default: '5'
+  verify-attempts:
+    description: Public verification attempts per file, 1-20
+    required: false
+    default: '6'
+  verify-delay-seconds:
+    description: Delay between public verification attempts, 0-60 seconds
+    required: false
+    default: '2'
+  verify-timeout-seconds:
+    description: Timeout for each public verification request, 1-300 seconds
+    required: false
+    default: '20'
   forbid-overwrite:
     description: Fail instead of overwriting an existing object
     required: false
@@ -68,6 +84,12 @@ outputs:
   destination:
     description: Uploaded COS directory URI
     value: ${{ steps.upload.outputs.destination }}
+  public-base-url:
+    description: Normalized public verification URL, or empty when verification was not requested
+    value: ${{ steps.upload.outputs.public-base-url }}
+  verified-files:
+    description: Number of files verified through public-base-url, or 0 when verification was not requested
+    value: ${{ steps.upload.outputs.verified-files }}
 runs:
   using: composite
   steps:
@@ -78,6 +100,7 @@ runs:
         COS_UPLOAD_SOURCE_DIR: ${{ inputs.source-dir }}
         COS_UPLOAD_BUCKET: ${{ inputs.bucket }}
         COS_UPLOAD_PREFIX: ${{ inputs.prefix }}
+        COS_UPLOAD_PUBLIC_BASE_URL: ${{ inputs.public-base-url }}
         COS_UPLOAD_REGION: ${{ inputs.region }}
         COS_UPLOAD_ENDPOINT: ${{ inputs.endpoint }}
         COS_UPLOAD_SECRET_ID: ${{ inputs.secret-id }}
@@ -91,5 +114,8 @@ runs:
         COS_UPLOAD_THREAD_NUM: ${{ inputs.thread-num }}
         COS_UPLOAD_PART_SIZE: ${{ inputs.part-size }}
         COS_UPLOAD_RETRY_COUNT: ${{ inputs.retry-count }}
+        COS_UPLOAD_VERIFY_ATTEMPTS: ${{ inputs.verify-attempts }}
+        COS_UPLOAD_VERIFY_DELAY_SECONDS: ${{ inputs.verify-delay-seconds }}
+        COS_UPLOAD_VERIFY_TIMEOUT_SECONDS: ${{ inputs.verify-timeout-seconds }}
         COS_UPLOAD_FORBID_OVERWRITE: ${{ inputs.forbid-overwrite }}
       run: bash "${{ github.action_path }}/scripts/upload.sh"

@@ -11,11 +11,17 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check shell syntax
         run: bash -n scripts/upload.sh scripts/test.sh
+      - name: Check verifier syntax
+        run: |
+          node --check scripts/verify.mjs
+          node --check scripts/verify.test.mjs
       - name: Test input validation
         run: bash scripts/test.sh
+      - name: Test public verification
+        run: node --test scripts/verify.test.mjs
       - name: Check composite action failure propagation
         id: expected-failure
         uses: ./
