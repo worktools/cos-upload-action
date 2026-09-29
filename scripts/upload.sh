@@ -17,6 +17,13 @@ require_integer() {
   (( 10#$value >= min && 10#$value <= max )) || fail "${name} must be an integer from ${min} to ${max}"
 }
 
+trim_surrounding_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
 normalize_public_base_url() {
   local raw="${COS_UPLOAD_PUBLIC_BASE_URL:-}"
   if [[ -z "$raw" ]]; then
@@ -29,6 +36,11 @@ normalize_public_base_url() {
 }
 
 validate_inputs() {
+  COS_UPLOAD_BUCKET="$(trim_surrounding_whitespace "${COS_UPLOAD_BUCKET:-}")"
+  COS_UPLOAD_SECRET_ID="$(trim_surrounding_whitespace "${COS_UPLOAD_SECRET_ID:-}")"
+  COS_UPLOAD_SECRET_KEY="$(trim_surrounding_whitespace "${COS_UPLOAD_SECRET_KEY:-}")"
+  COS_UPLOAD_SESSION_TOKEN="$(trim_surrounding_whitespace "${COS_UPLOAD_SESSION_TOKEN:-}")"
+
   require_value source-dir "${COS_UPLOAD_SOURCE_DIR:-}"
   require_value bucket "${COS_UPLOAD_BUCKET:-}"
   require_value prefix "${COS_UPLOAD_PREFIX:-}"
@@ -45,6 +57,8 @@ validate_inputs() {
   COS_UPLOAD_SOURCE_REAL="$source_real"
 
   [[ "$COS_UPLOAD_BUCKET" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || fail 'bucket contains invalid characters'
+  [[ "$COS_UPLOAD_SECRET_ID" != *[[:space:]]* ]] || fail 'secret-id must not contain whitespace'
+  [[ "$COS_UPLOAD_SECRET_KEY" != *[[:space:]]* ]] || fail 'secret-key must not contain whitespace'
   [[ "$COS_UPLOAD_REGION" =~ ^[a-z][a-z0-9-]*$ ]] || fail 'region contains invalid characters'
   [[ "$COS_UPLOAD_PREFIX" != /* && "$COS_UPLOAD_PREFIX" != *//* && "$COS_UPLOAD_PREFIX" != *..* ]] || fail 'prefix must be relative and must not contain // or ..'
   [[ "$COS_UPLOAD_PREFIX" =~ ^[A-Za-z0-9._/-]+$ ]] || fail 'prefix contains invalid characters'

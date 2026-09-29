@@ -20,6 +20,13 @@ output="$(bash "$action_root/scripts/upload.sh" --validate-only)"
 verified_output="$(env COS_UPLOAD_PUBLIC_BASE_URL=https://cdn.example.com/worktools/example/pr bash "$action_root/scripts/upload.sh" --validate-only)"
 [[ "$verified_output" == *'Public verification: https://cdn.example.com/worktools/example/pr/'* ]] || { echo 'Expected normalized public verification URL'; exit 1; }
 
+trimmed_output="$(env \
+  COS_UPLOAD_BUCKET=$'\n example-1250000000 \r' \
+  COS_UPLOAD_SECRET_ID=$'\t example-id \n' \
+  COS_UPLOAD_SECRET_KEY=$'\r example-key \t' \
+  bash "$action_root/scripts/upload.sh" --validate-only)"
+[[ "$trimmed_output" == *'cos://example-1250000000/worktools/example/pr/'* ]] || { echo 'Expected surrounding credential whitespace to be trimmed'; exit 1; }
+
 expect_failure() {
   local expected="$1" output
   shift
@@ -34,6 +41,9 @@ expect_failure 'source-dir does not exist' COS_UPLOAD_SOURCE_DIR="$fixture/missi
 expect_failure 'source-dir must be a dedicated directory' COS_UPLOAD_SOURCE_DIR="$action_root"
 expect_failure 'prefix must be relative' COS_UPLOAD_PREFIX=../outside
 expect_failure 'Missing required input: secret-key' COS_UPLOAD_SECRET_KEY=
+expect_failure 'Missing required input: secret-id' COS_UPLOAD_SECRET_ID=$' \r\n\t'
+expect_failure 'secret-id must not contain whitespace' COS_UPLOAD_SECRET_ID='example id'
+expect_failure 'secret-key must not contain whitespace' COS_UPLOAD_SECRET_KEY='example key'
 expect_failure 'routines must be an integer' COS_UPLOAD_ROUTINES=zero
 expect_failure 'endpoint must be a Tencent COS hostname' COS_UPLOAD_ENDPOINT=https://example.com
 expect_failure 'public-base-url must be an absolute HTTPS URL' COS_UPLOAD_PUBLIC_BASE_URL=http://cdn.example.com/example
