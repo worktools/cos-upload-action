@@ -24,7 +24,7 @@ jobs:
       - name: Build
         run: yarn build
       - name: Upload static files to COS
-        uses: worktools/cos-upload-action@v1.0.0
+        uses: worktools/cos-upload-action@v1.1.0
         with:
           source-dir: dist
           bucket: ${{ secrets.COS_BUCKET }}
@@ -35,7 +35,7 @@ jobs:
           secret-key: ${{ secrets.COS_SECRET_KEY }}
 ```
 
-生产流程应把 `prefix` 和 `public-base-url` 同时改为 `${{ github.repository }}/` 对应路径，并在 Action 成功之后再执行其他部署。实际使用时，建议把 `@v1.0.0` 固定成已审阅的完整提交 SHA。对于来自 fork 的 PR，GitHub 不提供这些 secrets，因此应像示例一样跳过上传，不要改用 `pull_request_target` 执行不可信代码。
+生产流程应把 `prefix` 和 `public-base-url` 同时改为 `${{ github.repository }}/` 对应路径，并在 Action 成功之后再执行其他部署。实际使用时，建议把 `@v1.1.0` 固定成已审阅的完整提交 SHA。对于来自 fork 的 PR，GitHub 不提供这些 secrets，因此应像示例一样跳过上传，不要改用 `pull_request_target` 执行不可信代码。
 
 ## 输入参数
 
