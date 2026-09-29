@@ -65,7 +65,7 @@ jobs:
 
 ## 错误与验证
 
-Action 在以下情况会立即失败：必填参数缺失、源目录不存在或为空、路径/数值不合法、runner 平台不支持、COSCLI 下载或 SHA-256 校验失败、COSCLI 报告任何上传失败。错误摘要会显示 COS 返回的错误码，但不会打印密钥或完整请求日志。
+Action 会裁剪 bucket 与凭据输入首尾因复制产生的空白或换行，但仍拒绝凭据中间出现空白。Action 在以下情况会立即失败：必填参数缺失、源目录不存在或为空、路径/数值不合法、runner 平台不支持、COSCLI 下载或 SHA-256 校验失败、COSCLI 报告任何上传失败。错误摘要会显示 COS 返回的错误码，但不会打印密钥或完整请求日志。
 
 - `AccessDenied`：检查桶及目标前缀的上传、覆盖和分片上传权限。
 - `SignatureDoesNotMatch` / `InvalidAccessKeyId`：检查 SecretId、SecretKey、临时 token 和地域。
