@@ -17,6 +17,17 @@ require_integer() {
   (( 10#$value >= min && 10#$value <= max )) || fail "${name} must be an integer from ${min} to ${max}"
 }
 
+normalize_public_base_url() {
+  local raw="${COS_UPLOAD_PUBLIC_BASE_URL:-}"
+  if [[ -z "$raw" ]]; then
+    COS_UPLOAD_PUBLIC_BASE_URL=
+    return 0
+  fi
+  [[ "$raw" == https://* ]] || fail 'public-base-url must be an absolute HTTPS URL'
+  [[ "$raw" != *'?'* && "$raw" != *'#'* ]] || fail 'public-base-url must not contain a query string or fragment'
+  COS_UPLOAD_PUBLIC_BASE_URL="${raw%/}/"
+}
+
 validate_inputs() {
   require_value source-dir "${COS_UPLOAD_SOURCE_DIR:-}"
   require_value bucket "${COS_UPLOAD_BUCKET:-}"
@@ -46,12 +57,22 @@ validate_inputs() {
   COS_UPLOAD_THREAD_NUM="${COS_UPLOAD_THREAD_NUM:-5}"
   COS_UPLOAD_PART_SIZE="${COS_UPLOAD_PART_SIZE:-32}"
   COS_UPLOAD_RETRY_COUNT="${COS_UPLOAD_RETRY_COUNT:-5}"
+  COS_UPLOAD_VERIFY_ATTEMPTS="${COS_UPLOAD_VERIFY_ATTEMPTS:-6}"
+  COS_UPLOAD_VERIFY_DELAY_SECONDS="${COS_UPLOAD_VERIFY_DELAY_SECONDS:-2}"
+  COS_UPLOAD_VERIFY_TIMEOUT_SECONDS="${COS_UPLOAD_VERIFY_TIMEOUT_SECONDS:-20}"
   COS_UPLOAD_FORBID_OVERWRITE="${COS_UPLOAD_FORBID_OVERWRITE:-false}"
   require_integer routines "$COS_UPLOAD_ROUTINES" 1 32
   require_integer thread-num "$COS_UPLOAD_THREAD_NUM" 1 32
   require_integer part-size "$COS_UPLOAD_PART_SIZE" 1 5120
   require_integer retry-count "$COS_UPLOAD_RETRY_COUNT" 0 100
+  require_integer verify-attempts "$COS_UPLOAD_VERIFY_ATTEMPTS" 1 20
+  require_integer verify-delay-seconds "$COS_UPLOAD_VERIFY_DELAY_SECONDS" 0 60
+  require_integer verify-timeout-seconds "$COS_UPLOAD_VERIFY_TIMEOUT_SECONDS" 1 300
   [[ "$COS_UPLOAD_FORBID_OVERWRITE" == true || "$COS_UPLOAD_FORBID_OVERWRITE" == false ]] || fail 'forbid-overwrite must be true or false'
+  normalize_public_base_url
+  if [[ -n "$COS_UPLOAD_PUBLIC_BASE_URL" && ( -n "${COS_UPLOAD_INCLUDE:-}" || -n "${COS_UPLOAD_EXCLUDE:-}" ) ]]; then
+    fail 'public verification cannot be combined with include or exclude filters'
+  fi
 }
 
 select_binary() {
@@ -83,8 +104,14 @@ diagnose_failure() {
 
 main() {
   validate_inputs
-  local destination="cos://${COS_UPLOAD_BUCKET}/${COS_UPLOAD_PREFIX}"
+  local destination="cos://${COS_UPLOAD_BUCKET}/${COS_UPLOAD_PREFIX}" script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
   printf 'Source: %s\nDestination: %s\nRegion: %s\n' "$COS_UPLOAD_SOURCE_DIR" "$destination" "$COS_UPLOAD_REGION"
+  if [[ -n "$COS_UPLOAD_PUBLIC_BASE_URL" ]]; then
+    printf 'Public verification: %s\n' "$COS_UPLOAD_PUBLIC_BASE_URL"
+    node "$script_dir/verify.mjs" --validate-only "$COS_UPLOAD_SOURCE_REAL" "$COS_UPLOAD_PUBLIC_BASE_URL" \
+      || fail 'Invalid public verification configuration'
+  fi
   if [[ "${1:-}" == --validate-only ]]; then
     return 0
   fi
@@ -121,8 +148,22 @@ main() {
     diagnose_failure "$error_dir"
   fi
   printf 'COS upload completed: %s\n' "$destination"
+
+  local verified_files=0
+  if [[ -n "$COS_UPLOAD_PUBLIC_BASE_URL" ]]; then
+    verified_files="$(node "$script_dir/verify.mjs" \
+      "$COS_UPLOAD_SOURCE_REAL" \
+      "$COS_UPLOAD_PUBLIC_BASE_URL" \
+      "$COS_UPLOAD_VERIFY_ATTEMPTS" \
+      "$COS_UPLOAD_VERIFY_DELAY_SECONDS" \
+      "$COS_UPLOAD_VERIFY_TIMEOUT_SECONDS" \
+      "$COS_UPLOAD_ROUTINES")" || fail 'Public verification failed after COS upload'
+    printf 'Public verification completed: %s file(s) at %s\n' "$verified_files" "$COS_UPLOAD_PUBLIC_BASE_URL"
+  fi
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'destination=%s\n' "$destination" >> "$GITHUB_OUTPUT"
+    printf 'public-base-url=%s\n' "$COS_UPLOAD_PUBLIC_BASE_URL" >> "$GITHUB_OUTPUT"
+    printf 'verified-files=%s\n' "$verified_files" >> "$GITHUB_OUTPUT"
   fi
 }
 
