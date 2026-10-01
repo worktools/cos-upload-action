@@ -73,6 +73,12 @@ Action 会裁剪 bucket 与凭据输入首尾因复制产生的空白或换行�
 
 设置 `public-base-url` 后，Action 会枚举 `source-dir` 中的所有普通文件，以带缓存穿透参数的 URL 并发读取。只有 HTTP 成功、响应字节数和 SHA-256 都与本地文件一致才算通过；404、旧缓存、截断响应和内容不一致都会按配置重试，最终仍不一致则整个 Action 失败。请求显式使用 `Accept-Encoding: identity`，避免传输压缩干扰内容核对。
 
+验证器同时检查生成 HTML 中的 script、stylesheet、modulepreload 及 script/style preload 引用：同源资源必须位于 `public-base-url` 前缀内并存在于本次上传目录，缺失或越界会失败。相对引用按该 HTML 的公开 URL（或有效 base 标签）解析，支持 mdBook 的嵌套页面；不同源的共享字体和第三方资源不由本 Action 校验。此检查针对生成的静态 HTML，不覆盖 CSS 内引用、运行时动态加载或浏览器执行结果。
+
+URL 属性支持带分号的十进制/十六进制数字实体及 `amp`、`quot`、`apos`、`lt`、`gt`；其他具名实体会明确报不支持，避免错误解析后误判成功。这是生成 HTML 的轻量扫描器，不是完整 HTML 浏览器解析器。
+
+无需新增输入参数或项目校验脚本。HTML 引用检查在公开下载之前完成，复用同一次文件枚举及 HTML 字节；每个文件仍只走原有字节/哈希校验请求，不重复读取公开 HTML。
+
 公网验证需要确认整个源目录，因此当前不能与 `include` / `exclude` 过滤同时使用；Action 会在上传前明确失败。需要筛选文件时，应先生成一个只包含待上传文件的专用目录，再将它作为 `source-dir`。
 
 本仓库的 `scripts/test.sh` 验证参数校验和明确报错，`scripts/verify.test.mjs` 覆盖 URL 安全、嵌套路径编码、传播重试和旧内容拒绝；CI 还用一个预期失败的本地 Action 调用确认错误传播。首次真实集成以 `calcit-lang/respo-calcit-workflow` 的 PR 构建为验收样例。
