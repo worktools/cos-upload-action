@@ -63,6 +63,58 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function htmlAttributes(tag) {
+  const attributes = new Map();
+  const pattern = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+  for (const match of tag.matchAll(pattern)) {
+    const name = match[1].toLowerCase();
+    if (!attributes.has(name)) {
+      attributes.set(name, (match[2] ?? match[3] ?? match[4]).replace(/&amp;/gi, '&'));
+    }
+  }
+  return attributes;
+}
+
+// Check emitted script/style references without fetching external shared resources.
+// HTML bytes are reused by the normal hash verifier, not downloaded a second time.
+export async function validateHtmlAssets(baseUrl, sourceDir, files) {
+  const available = new Set(files.map((file) => relative(resolve(sourceDir), file).split(sep).join('/')));
+  const htmlBytes = new Map();
+  for (const file of files.filter((path) => /\.html?$/i.test(path))) {
+    const bytes = await readFile(file);
+    htmlBytes.set(file, bytes);
+    const documentUrl = publicUrlForFile(baseUrl, sourceDir, file, 'html');
+    const displayPath = relative(resolve(sourceDir), file);
+    const html = bytes.toString('utf8').replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<(script|style|textarea|title)\b((?:[^"'<>]|"[^"]*"|'[^']*')*)>[\s\S]*?<\/\1\s*>/gi, '<$1$2></$1>');
+    const tags = [...html.matchAll(/<(base|script|link)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi)];
+    const baseTag = tags.find((tag) => tag[1].toLowerCase() === 'base' && htmlAttributes(tag[0]).has('href'));
+    const effectiveBase = baseTag ? new URL(htmlAttributes(baseTag[0]).get('href'), documentUrl) : documentUrl;
+    if (effectiveBase.origin !== baseUrl.origin || !effectiveBase.pathname.startsWith(baseUrl.pathname)) {
+      throw new Error(`HTML base is outside public-base-url: ${displayPath}`);
+    }
+    for (const tag of tags) {
+      const attributes = htmlAttributes(tag[0]);
+      const kind = tag[1].toLowerCase();
+      const rel = (attributes.get('rel') ?? '').toLowerCase().split(/\s+/);
+      const isStyleOrScript = rel.includes('stylesheet') || rel.includes('modulepreload') ||
+        (rel.includes('preload') && ['script', 'style'].includes((attributes.get('as') ?? '').toLowerCase()));
+      const reference = kind === 'script' ? attributes.get('src') : kind === 'link' && isStyleOrScript ? attributes.get('href') : undefined;
+      if (!reference) continue;
+      const url = new URL(reference, effectiveBase);
+      if (url.origin !== baseUrl.origin) continue; // Shared fonts/third-party scripts remain external.
+      if (!url.pathname.startsWith(baseUrl.pathname)) {
+        throw new Error(`HTML asset is outside public-base-url: ${displayPath} -> ${url.pathname}`);
+      }
+      const assetPath = decodeURIComponent(url.pathname.slice(baseUrl.pathname.length));
+      if (!available.has(assetPath)) {
+        throw new Error(`HTML asset is missing from source-dir: ${displayPath} -> ${assetPath}`);
+      }
+    }
+  }
+  return htmlBytes;
+}
+
 async function fetchBytes(fetchImpl, url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -94,6 +146,7 @@ export async function verifyDirectory({
   const baseUrl = normalizePublicBaseUrl(publicBaseUrl);
   const files = await collectRegularFiles(sourceDir);
   if (files.length === 0) throw new Error('source-dir contains no regular files to verify');
+  const htmlBytes = await validateHtmlAssets(baseUrl, sourceDir, files);
 
   let nextIndex = 0;
   const workerCount = Math.min(routines, files.length);
@@ -102,7 +155,7 @@ export async function verifyDirectory({
     while (nextIndex < files.length) {
       const filePath = files[nextIndex];
       nextIndex += 1;
-      const localBytes = await readFile(filePath);
+      const localBytes = htmlBytes.get(filePath) ?? await readFile(filePath);
       const expectedHash = sha256(localBytes);
       const displayPath = relative(resolve(sourceDir), filePath).split(sep).join('/');
       let lastFailure = 'no response';

@@ -96,3 +96,66 @@ test('rejects stale public content even when the request succeeds', async () => 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('verifies Vite and nested book references without extra public requests', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cos-verify-html.'));
+  try {
+    await mkdir(join(root, 'assets'));
+    await mkdir(join(root, 'book'));
+    const content = new Map([
+      ['assets/app.js', 'export default 1;'],
+      ['assets/with space.css', 'body {}'],
+      ['index.html', `<script type="module" src="https://cdn.example.com/repo/assets/app.js"></script>
+        <link rel="stylesheet" href="assets/with%20space.css?x=1&amp;y=2">
+        <link rel="modulepreload" href="assets/app.js">
+        <link rel="stylesheet" href="https://fonts.example.com/shared.css">
+        <!-- <script src="missing.js"></script> -->
+        <script>const example = '<link rel="stylesheet" href="missing.css">';</script>`],
+      ['book/chapter.html', `<base href="../"><script src=assets/app.js></script>
+        <link rel="preload" as="style" href="assets/with%20space.css">`],
+      ['book/relative.html', '<script src="../assets/app.js"></script>'],
+    ]);
+    for (const [path, bytes] of content) await writeFile(join(root, path), bytes);
+    const requested = [];
+    assert.equal(await verifyDirectory({
+      sourceDir: root,
+      publicBaseUrl: 'https://cdn.example.com/repo/',
+      attempts: 1,
+      log: () => {},
+      fetchImpl: async (url) => {
+        const path = decodeURIComponent(url.pathname.slice('/repo/'.length));
+        requested.push(path);
+        return new Response(content.get(path));
+      },
+    }), content.size);
+    assert.deepEqual(requested.sort(), [...content.keys()].sort());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects missing assets and incorrect CDN paths before public downloads', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cos-verify-html-invalid.'));
+  try {
+    await writeFile(join(root, 'app.js'), 'export default 1;');
+    const cases = [
+      ['<script src="missing.js"></script>', /missing from source-dir/],
+      ['<link rel="stylesheet" href="/other/app.css">', /outside public-base-url/],
+      ['<script src="https://cdn.example.com/repository/app.js"></script>', /outside public-base-url/],
+      ['<base href="https://outside.example.com/"><script src="app.js"></script>', /HTML base is outside/],
+    ];
+    let requests = 0;
+    for (const [html, expected] of cases) {
+      await writeFile(join(root, 'index.html'), html);
+      await assert.rejects(verifyDirectory({
+        sourceDir: root,
+        publicBaseUrl: 'https://cdn.example.com/repo/',
+        log: () => {},
+        fetchImpl: async () => { requests += 1; return new Response('unexpected'); },
+      }), expected);
+    }
+    assert.equal(requests, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
