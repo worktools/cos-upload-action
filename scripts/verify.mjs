@@ -69,10 +69,41 @@ function htmlAttributes(tag) {
   for (const match of tag.matchAll(pattern)) {
     const name = match[1].toLowerCase();
     if (!attributes.has(name)) {
-      attributes.set(name, (match[2] ?? match[3] ?? match[4]).replace(/&amp;/gi, '&'));
+      const raw = match[2] ?? match[3] ?? match[4];
+      // Generated URLs normally use amp/numeric references. Do not guess other named entities.
+      if (['src', 'href'].includes(name) && /&(?!amp;|quot;|apos;|lt;|gt;)[a-z][\da-z]+;/i.test(raw)) {
+        throw new Error('Unsupported named HTML character reference in asset URL');
+      }
+      const value = raw.replace(
+        /&(#x[\da-f]+|#\d+|amp|quot|apos|lt|gt);/gi,
+        (_, entity) => {
+          if (!entity.startsWith('#')) return { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' }[entity.toLowerCase()];
+          const hexadecimal = entity[1].toLowerCase() === 'x';
+          const code = Number.parseInt(entity.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+          return String.fromCodePoint(code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? 0xfffd : code);
+        },
+      );
+      attributes.set(name, value);
     }
   }
   return attributes;
+}
+
+function htmlResourceTags(html) {
+  const tags = [];
+  // Consume whole tags, including quoted attributes, before recognizing comments.
+  const tokens = /<!--[\s\S]*?(?:-->|$)|<([a-z][\w:-]*)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi;
+  for (let match; (match = tokens.exec(html));) {
+    if (!match[1]) continue;
+    const name = match[1].toLowerCase();
+    if (['base', 'script', 'link'].includes(name)) tags.push(match);
+    if (['script', 'style', 'textarea', 'title'].includes(name)) {
+      const close = new RegExp(`</${name}\\s*>`, 'gi');
+      close.lastIndex = tokens.lastIndex;
+      tokens.lastIndex = close.exec(html) ? close.lastIndex : html.length;
+    }
+  }
+  return tags;
 }
 
 // Check emitted script/style references without fetching external shared resources.
@@ -85,9 +116,7 @@ export async function validateHtmlAssets(baseUrl, sourceDir, files) {
     htmlBytes.set(file, bytes);
     const documentUrl = publicUrlForFile(baseUrl, sourceDir, file, 'html');
     const displayPath = relative(resolve(sourceDir), file);
-    const html = bytes.toString('utf8').replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<(script|style|textarea|title)\b((?:[^"'<>]|"[^"]*"|'[^']*')*)>[\s\S]*?<\/\1\s*>/gi, '<$1$2></$1>');
-    const tags = [...html.matchAll(/<(base|script|link)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi)];
+    const tags = htmlResourceTags(bytes.toString('utf8'));
     const baseTag = tags.find((tag) => tag[1].toLowerCase() === 'base' && htmlAttributes(tag[0]).has('href'));
     const effectiveBase = baseTag ? new URL(htmlAttributes(baseTag[0]).get('href'), documentUrl) : documentUrl;
     if (effectiveBase.origin !== baseUrl.origin || !effectiveBase.pathname.startsWith(baseUrl.pathname)) {

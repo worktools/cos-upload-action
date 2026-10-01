@@ -107,7 +107,8 @@ test('verifies Vite and nested book references without extra public requests', a
       ['assets/with space.css', 'body {}'],
       ['index.html', `<script type="module" src="https://cdn.example.com/repo/assets/app.js"></script>
         <link rel="stylesheet" href="assets/with%20space.css?x=1&amp;y=2">
-        <link rel="modulepreload" href="assets/app.js">
+        <link rel="modulepreload" href="assets/app.js&#63;v=1">
+        <link rel="preload" as="script" href="assets/app.js&#x3f;v=2">
         <link rel="stylesheet" href="https://fonts.example.com/shared.css">
         <!-- <script src="missing.js"></script> -->
         <script>const example = '<link rel="stylesheet" href="missing.css">';</script>`],
@@ -140,9 +141,11 @@ test('rejects missing assets and incorrect CDN paths before public downloads', a
     await writeFile(join(root, 'app.js'), 'export default 1;');
     const cases = [
       ['<script src="missing.js"></script>', /missing from source-dir/],
+      ['<div data-marker="<!--"></div><script src="missing.js"></script><!-- end -->', /missing from source-dir/],
       ['<link rel="stylesheet" href="/other/app.css">', /outside public-base-url/],
       ['<script src="https://cdn.example.com/repository/app.js"></script>', /outside public-base-url/],
       ['<base href="https://outside.example.com/"><script src="app.js"></script>', /HTML base is outside/],
+      ['<script src="app.js&quest;v=1"></script>', /Unsupported named HTML/],
     ];
     let requests = 0;
     for (const [html, expected] of cases) {
