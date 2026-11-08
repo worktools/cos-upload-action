@@ -3,6 +3,7 @@
 将一个本地目录递归上传到腾讯云对象存储（COS），并可立即从公开 CDN 逐文件校验上传结果。这是一个范围刻意收窄的 GitHub composite Action：它负责**校验输入、下载并核对 COSCLI、上传文件、通过公开 URL 核对字节数与 SHA-256、报告错误**；不编译项目、不推断 CDN 地址、不发布网页，也不删除存储桶中的旧对象。
 
 当前固定使用官方 COSCLI `v1.0.9`，支持 GitHub Actions 的 Linux/macOS x64 与 arm64 runner。各平台二进制均按发布清单中的 SHA-256 校验；不支持 Windows runner。
+Release 下载返回 HTTP 502、503 或 504 时，会尝试通过 GitHub 官方资产 API 获取同一二进制，并执行原 SHA-256 校验。
 
 ## 使用示例
 
