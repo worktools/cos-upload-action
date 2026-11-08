@@ -94,10 +94,10 @@ select_binary() {
   os="$(uname -s)"
   arch="$(uname -m)"
   case "${os}/${arch}" in
-    Linux/x86_64) COSCLI_ASSET=coscli-v1.0.9-linux-amd64; COSCLI_SHA256=a07de5ba2800147a700ed29036b0c76a4229088cee68e1682d0eae19b638a915 ;;
-    Linux/aarch64) COSCLI_ASSET=coscli-v1.0.9-linux-arm64; COSCLI_SHA256=5cac5ca3c093f080d6733f4c698c0bdbebdb7b30a6b50835b85de1727b8b6923 ;;
-    Darwin/x86_64) COSCLI_ASSET=coscli-v1.0.9-darwin-amd64; COSCLI_SHA256=49a784987010de548b000ba509df28d600dfde3d530b445edb84bc7900d84c73 ;;
-    Darwin/arm64) COSCLI_ASSET=coscli-v1.0.9-darwin-arm64; COSCLI_SHA256=cf99d4546e4f2962739c6d25f6e0e7f0b49c94854e2dae237de38d0e8d27c263 ;;
+    Linux/x86_64) COSCLI_ASSET=coscli-v1.0.9-linux-amd64; COSCLI_ASSET_ID=528816987; COSCLI_SHA256=a07de5ba2800147a700ed29036b0c76a4229088cee68e1682d0eae19b638a915 ;;
+    Linux/aarch64) COSCLI_ASSET=coscli-v1.0.9-linux-arm64; COSCLI_ASSET_ID=528817185; COSCLI_SHA256=5cac5ca3c093f080d6733f4c698c0bdbebdb7b30a6b50835b85de1727b8b6923 ;;
+    Darwin/x86_64) COSCLI_ASSET=coscli-v1.0.9-darwin-amd64; COSCLI_ASSET_ID=528816555; COSCLI_SHA256=49a784987010de548b000ba509df28d600dfde3d530b445edb84bc7900d84c73 ;;
+    Darwin/arm64) COSCLI_ASSET=coscli-v1.0.9-darwin-arm64; COSCLI_ASSET_ID=528816759; COSCLI_SHA256=cf99d4546e4f2962739c6d25f6e0e7f0b49c94854e2dae237de38d0e8d27c263 ;;
     *) fail "Unsupported runner architecture: ${os}/${arch}; use Linux/macOS x64 or arm64" ;;
   esac
 }
@@ -131,13 +131,23 @@ main() {
   fi
 
   select_binary
-  local temp_dir cli_path actual_sha error_dir
+  local temp_dir cli_path actual_sha error_dir download_status
   temp_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/cos-upload.XXXXXX")"
   cli_path="${temp_dir}/coscli"
   error_dir="${temp_dir}/errors"
-  curl --fail --location --retry 3 --silent --show-error \
+  if ! download_status="$(curl --fail --location --retry 3 --silent --show-error --write-out '%{http_code}' \
     "https://github.com/tencentyun/coscli/releases/download/v1.0.9/${COSCLI_ASSET}" \
-    --output "$cli_path" || fail 'Unable to download COSCLI v1.0.9 from the official release'
+    --output "$cli_path")"; then
+    case "$download_status" in
+      502|503|504)
+        printf 'COSCLI release download returned HTTP %s; trying the official GitHub asset API\n' "$download_status"
+        curl --fail --location --retry 3 --silent --show-error --header 'Accept: application/octet-stream' \
+          "https://api.github.com/repos/tencentyun/coscli/releases/assets/${COSCLI_ASSET_ID}" \
+          --output "$cli_path" || fail 'Unable to download COSCLI v1.0.9 from the official asset API'
+        ;;
+      *) fail 'Unable to download COSCLI v1.0.9 from the official release' ;;
+    esac
+  fi
   if command -v sha256sum >/dev/null 2>&1; then
     actual_sha="$(sha256sum "$cli_path" | cut -d ' ' -f 1)"
   else

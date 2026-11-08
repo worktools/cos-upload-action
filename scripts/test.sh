@@ -53,4 +53,31 @@ expect_failure 'verify-attempts must be an integer' COS_UPLOAD_VERIFY_ATTEMPTS=z
 expect_failure 'verify-timeout-seconds must be an integer from 1 to 300' COS_UPLOAD_VERIFY_TIMEOUT_SECONDS=0
 expect_failure 'public verification cannot be combined with include or exclude filters' COS_UPLOAD_PUBLIC_BASE_URL=https://cdn.example.com/example COS_UPLOAD_INCLUDE='.*\.js'
 
+mkdir -p "$fixture/bin"
+cat > "$fixture/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *https://github.com/tencentyun/coscli/releases/download/*)
+    printf '%s' "$TEST_COSCLI_HTTP_STATUS"
+    exit 22
+    ;;
+  *https://api.github.com/repos/tencentyun/coscli/releases/assets/*)
+    [[ "$*" == *'Accept: application/octet-stream'* ]] || exit 1
+    printf 'not a valid COSCLI binary' > "${@: -1}"
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$fixture/bin/curl"
+if output="$(env PATH="$fixture/bin:$PATH" RUNNER_TEMP="$fixture" TEST_COSCLI_HTTP_STATUS=504 bash "$action_root/scripts/upload.sh" 2>&1)"; then
+  echo 'Expected an invalid fallback binary to be rejected'
+  exit 1
+fi
+[[ "$output" == *'trying the official GitHub asset API'* && "$output" == *'COSCLI SHA-256 mismatch'* ]]
+if output="$(env PATH="$fixture/bin:$PATH" RUNNER_TEMP="$fixture" TEST_COSCLI_HTTP_STATUS=404 bash "$action_root/scripts/upload.sh" 2>&1)"; then
+  echo 'Expected the release download to fail'
+  exit 1
+fi
+[[ "$output" == *'Unable to download COSCLI v1.0.9 from the official release'* && "$output" != *'trying the official GitHub asset API'* ]]
+
 printf 'COS upload input validation tests passed\n'
